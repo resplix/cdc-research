@@ -1,0 +1,18 @@
+[package]
+name = "resplix-cdc"
+version = "0.1.0"
+edition = "2021"
+authors = ["Resplix Engineering <engineering@resplix.com>"]
+description = "FastCDC (2016) implementation for industrial data transit."
+
+[dependencies]
+# Future dependencies for SIMD and hashing
+# wide = "0.7" 
+# blake3 = "1.5"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "cdc_bench"
+harness = false
