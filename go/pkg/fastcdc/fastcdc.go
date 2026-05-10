@@ -1,5 +1,10 @@
 package fastcdc
 
+
+import (
+	"io"
+)
+
 // Config defines the parameters for the FastCDC algorithm.
 type Config struct {
 	MinSize int
@@ -23,9 +28,39 @@ type Chunk struct {
 	Hash   uint64
 }
 
+
 // Chunker is the interface for stream-based content-defined chunking.
 type Chunker interface {
 	Next() (*Chunk, error)
+}
+
+// StreamingChunker handles CDC on an io.Reader stream.
+type StreamingChunker struct {
+	reader io.Reader
+	buf    []byte
+	pos    int
+	config Config
+	maskS  uint64
+	maskL  uint64
+	eof    bool
+}
+
+// NewStreamingChunker creates a new Chunker for an io.Reader.
+func NewStreamingChunker(r io.Reader, config Config) *StreamingChunker {
+	return &StreamingChunker{
+		reader: r,
+		buf:    make([]byte, config.MaxSize*2),
+		config: config,
+		maskS:  (1 << 15) - 1,
+		maskL:  (1 << 11) - 1,
+	}
+}
+
+func (s *StreamingChunker) Next() (*Chunk, error) {
+	// Implementation for streaming would involve managing the buffer
+	// and reading from the reader when needed.
+	// For now, this is a placeholder to show architectural intent.
+	return nil, io.EOF
 }
 
 // FastCDC implements the Chunker interface using the FastCDC algorithm.
@@ -64,18 +99,47 @@ func (c *FastCDC) Next() (*Chunk, error) {
 		return chunk, nil
 	}
 
-	// Placeholder for FastCDC core logic
-	length := c.config.AvgSize
-	if length > remaining {
-		length = remaining
+	hash := uint64(0)
+	start := c.pos
+	end := start + c.config.MinSize
+	max := start + c.config.MaxSize
+	if max > len(c.data) {
+		max = len(c.data)
+	}
+	avg := start + c.config.AvgSize
+
+	// Phase 1: Normalized Chunking with small mask
+	limitS := avg
+	if limitS > max {
+		limitS = max
+	}
+	for end < limitS {
+		hash = (hash << 1) + GearTable[c.data[end]]
+		if (hash & c.maskS) == 0 {
+			length := (end + 1) - start
+			c.pos = end + 1
+			return &Chunk{Offset: start, Length: length, Hash: hash}, nil
+		}
+		end++
 	}
 
-	chunk := &Chunk{
-		Offset: c.pos,
+	// Phase 2: Normalized Chunking with large mask
+	for end < max {
+		hash = (hash << 1) + GearTable[c.data[end]]
+		if (hash & c.maskL) == 0 {
+			length := (end + 1) - start
+			c.pos = end + 1
+			return &Chunk{Offset: start, Length: length, Hash: hash}, nil
+		}
+		end++
+	}
+
+	// Phase 3: Max size reached
+	length := max - start
+	c.pos = max
+	return &Chunk{
+		Offset: start,
 		Length: length,
-		Hash:   0,
-	}
-
-	c.pos += length
-	return chunk, nil
+		Hash:   hash,
+	}, nil
 }
