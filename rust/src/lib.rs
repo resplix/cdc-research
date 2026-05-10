@@ -71,31 +71,48 @@ impl<'a> Chunker for FastCDC<'a> {
             let chunk = Chunk {
                 offset: self.pos,
                 length: remaining,
-                hash: 0, // Finalize hash
+                hash: 0, 
             };
             self.pos = self.data.len();
             return Some(chunk);
         }
 
-        // FastCDC Algorithm: 
-        // 1. Skip min_size
-        // 2. Roll Gear Hash
-        // 3. Check against masks (Normalized Chunking)
-        
         let mut hash = 0u64;
-        let mut end = self.pos + self.config.min_size;
-        let max = (self.pos + self.config.max_size).min(self.data.len());
+        let start = self.pos;
+        let mut end = start + self.config.min_size;
+        let max = (start + self.config.max_size).min(self.data.len());
+        let avg = start + self.config.avg_size;
 
-        // Skip logic and rolling hash loop would go here...
-        // This is a placeholder for the core logic to be implemented.
-        
-        let chunk = Chunk {
-            offset: self.pos,
-            length: self.config.avg_size.min(remaining), // Placeholder
-            hash: 0,
-        };
-        
-        self.pos += chunk.length;
-        Some(chunk)
+        // Phase 1: Normalized Chunking with small mask
+        let limit_s = avg.min(max);
+        while end < limit_s {
+            hash = gear::update_hash(hash, self.data[end]);
+            if (hash & self.mask_s) == 0 {
+                let length = (end + 1) - start;
+                self.pos = end + 1;
+                return Some(Chunk { offset: start, length, hash });
+            }
+            end += 1;
+        }
+
+        // Phase 2: Normalized Chunking with large mask
+        while end < max {
+            hash = gear::update_hash(hash, self.data[end]);
+            if (hash & self.mask_l) == 0 {
+                let length = (end + 1) - start;
+                self.pos = end + 1;
+                return Some(Chunk { offset: start, length, hash });
+            }
+            end += 1;
+        }
+
+        // Phase 3: Max size reached
+        let length = max - start;
+        self.pos = max;
+        Some(Chunk {
+            offset: start,
+            length,
+            hash,
+        })
     }
 }
