@@ -2,7 +2,7 @@
 
 > **Data is an Asset. Movement is a Liability.**
 
-This repository contains high-performance implementations of Content-Defined Chunking (CDC) algorithms, specifically focusing on the **FastCDC** (2016) paper. Engineered for industrial-scale data deduplication and verifiable movement within the [Resplix](https://resplix.com) ecosystem.
+This repository contains high-performance implementations of Content-Defined Chunking (CDC) algorithms, specifically focusing on the **FastCDC** (2016) paper: [FastCDC: a Fast and Efficient Content-Defined Chunking Approach for Data Deduplication](https://www.usenix.org/conference/atc16/technical-sessions/presentation/xia). Engineered for industrial-scale data deduplication and verifiable movement within the [Resplix](https://resplix.com) ecosystem.
 
 ---
 
