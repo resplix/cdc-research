@@ -16,7 +16,7 @@ pub const GEAR_TABLE: [u64; 256] = [
     0x0b0b2e2e6c6c5a5a, 0x1d1d3f3f7e7e6b6b, 0x2f2f4d4d8e8e7c7c, 0x3a3a5b5b9e9e8d8d,
     0x4b4b6c6c9a9a9d9d, 0x5d5d7e7e8b8b9c9c, 0x6e6e8d8d7c7c8b8b, 0x7a7a9b9b6e6e7d7d,
     0x8f8f4c4c2a2a0d0d, 0x9e9e5d5d3b3b1c1c, 0xaeae6e6e4c4c2d2d, 0xbebe7f7f5d5d3e3e,
-    0xcece8f8f6e6e4f4f, 0dede9f9f7f7f5f5f, 0xeeeeafaf8f8f6f6f, 0xfefebfbf9f9f7f7f,
+    0xcece8f8f6e6e4f4f, 0xdede9f9f7f7f5f5f, 0xeeeeafaf8f8f6f6f, 0xfefebfbf9f9f7f7f,
     0x0011223344556677, 0x8899aabbccddeeff, 0x1234567890abcdef, 0xfedcba0987654321,
     0xdeadbeefdeadbeef, 0xcafebabecafebabe, 0xbaadc0debaadc0de, 0xfacefeedfacefeed,
     0x0102030405060708, 0x090a0b0c0d0e0f10, 0x1112131415161718, 0x191a1b1c1d1e1f20,
@@ -60,6 +60,15 @@ pub const GEAR_TABLE: [u64; 256] = [
     0xa2a4a6a8aaacae10, 0xb2b4b6b8babcbe20, 0xc2c4c6c8cacccd30, 0xd2d4d6d8dadcde40,
     0xe2e4e6e8eaeced50, 0xf2f4f6f8fbfcfe60, 0x1122334455667788, 0x99aabbccddeeff00,
     0x1234567890abcdef, 0xfedcba0987654321, 0x13579bdf02468ace, 0xeca86420fdb97531,
+    0x0001020304050607, 0x08090a0b0c0d0e0f, 0x1011121314151617, 0x18191a1b1c1d1e1f,
+    0x2021222324252627, 0x28292a2b2c2d2e2f, 0x3031323334353637, 0x38393a3b3c3d3e3f,
+    0x4041424344454647, 0x48494a4b4c4d4e4f, 0x5051525354555657, 0x58595a5b5c5d5e5f,
+    0x6061626364656667, 0x68696a6b6c6d6e6f, 0x7071727374757677, 0x78797a7b7c7d7e7f,
+    0x8081828384858687, 0x88898a8b8c8d8e8f, 0x9091929394959697, 0x98999a9b9c9d9e9f,
+    0xa0a1a2a3a4a5a6a7, 0xa8a9aaabacadaeaf, 0xb0b1b2b3b4b5b6b7, 0xb8b9babbbcbdbebf,
+    0xc0c1c2c3c4c5c6c7, 0xc8c9cacbcccdcecf, 0xd0d1d2d3d4d5d6d7, 0xd8d9dadbdcdddedf,
+    0xe0e1e2e3e4e5e6e7, 0xe8e9eaebecedeeef, 0xf0f1f2f3f4f5f6f7, 0xf8f9fafbfcfdfeff,
+    0x0000000000000001, 0x0000000000000002, 0x0000000000000003, 0x0000000000000004,
 ];
 
 /// Updates the rolling Gear Hash.
