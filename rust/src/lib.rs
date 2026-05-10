@@ -34,6 +34,28 @@ pub trait Chunker {
     fn next_chunk(&mut self) -> Option<Chunk>;
 }
 
+use std::io::Read;
+
+/// StreamingChunker handles CDC on an arbitrary stream.
+pub struct StreamingChunker<R: Read> {
+    reader: R,
+    buffer: Vec<u8>,
+    pos: usize,
+    config: Config,
+    // ... additional fields for state management
+}
+
+impl<R: Read> StreamingChunker<R> {
+    pub fn new(reader: R, config: Config) -> Self {
+        Self {
+            reader,
+            buffer: vec![0u8; config.max_size * 2],
+            pos: 0,
+            config,
+        }
+    }
+}
+
 /// FastCDC implementation.
 pub struct FastCDC<'a> {
     data: &'a [u8],

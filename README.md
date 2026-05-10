@@ -22,7 +22,7 @@ Unlike traditional Rabin Fingerprinting, FastCDC utilizes the **Gear Hash** algo
 
 | Metric | Target | Status |
 | :--- | :--- | :--- |
-| **Hash Throughput** | 10GB/s+ per core | Researching |
+| **Hash Throughput** | 10GB/s+ per core | Optimizing (Core Logic Done) |
 | **Dedupe Efficiency** | > 90% (Standard Datasets) | Validating |
 | **Indexing Latency** | < 0.002ms | Engineering Beta |
 | **CPU Overhead** | < 1.2% Under Load | Benchmarking |
