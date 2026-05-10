@@ -33,3 +33,69 @@ pub struct Chunk {
 pub trait Chunker {
     fn next_chunk(&mut self) -> Option<Chunk>;
 }
+
+/// FastCDC implementation.
+pub struct FastCDC<'a> {
+    data: &'a [u8],
+    pos: usize,
+    config: Config,
+    mask_s: u64, // Small mask for normalization
+    mask_l: u64, // Large mask for normalization
+}
+
+impl<'a> FastCDC<'a> {
+    pub fn new(data: &'a [u8], config: Config) -> Self {
+        // Typical masks for 16KB avg chunk size
+        // mask = (1 << bits) - 1
+        let mask_s = (1 << 15) - 1; 
+        let mask_l = (1 << 11) - 1;
+
+        Self {
+            data,
+            pos: 0,
+            config,
+            mask_s,
+            mask_l,
+        }
+    }
+}
+
+impl<'a> Chunker for FastCDC<'a> {
+    fn next_chunk(&mut self) -> Option<Chunk> {
+        if self.pos >= self.data.len() {
+            return None;
+        }
+
+        let remaining = self.data.len() - self.pos;
+        if remaining <= self.config.min_size {
+            let chunk = Chunk {
+                offset: self.pos,
+                length: remaining,
+                hash: 0, // Finalize hash
+            };
+            self.pos = self.data.len();
+            return Some(chunk);
+        }
+
+        // FastCDC Algorithm: 
+        // 1. Skip min_size
+        // 2. Roll Gear Hash
+        // 3. Check against masks (Normalized Chunking)
+        
+        let mut hash = 0u64;
+        let mut end = self.pos + self.config.min_size;
+        let max = (self.pos + self.config.max_size).min(self.data.len());
+
+        // Skip logic and rolling hash loop would go here...
+        // This is a placeholder for the core logic to be implemented.
+        
+        let chunk = Chunk {
+            offset: self.pos,
+            length: self.config.avg_size.min(remaining), // Placeholder
+            hash: 0,
+        };
+        
+        self.pos += chunk.length;
+        Some(chunk)
+    }
+}
