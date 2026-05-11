@@ -11,10 +11,10 @@ fn main() {
     println!("Resplix CDC Research Cluster - Rust Implementation");
     println!("Config Loaded: {:?}", config);
 
-    // Create a large-ish string for testing
+    // Create a less repetitive string for testing
     let mut original = String::new();
     for i in 0..5000 {
-        original.push_str(&format!("This is a line of text for CDC research. Index: {} ", i));
+        original.push_str(&format!("Line {}: Random data {} to ensure chunks are unique... ", i, i * 37 % 100));
     }
 
     // Run insertion test
