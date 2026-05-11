@@ -1,5 +1,5 @@
 use std::fs;
-use resplix_cdc::{Config, compare_dedupe, read_file};
+use resplix_cdc::{Config, compare_dedupe, read_file, test_corruption, test_reordering, print_stats, FastCDC, Chunker};
 
 fn main() {
     // Load config
@@ -13,29 +13,26 @@ fn main() {
     println!("====================================================");
     println!("Config: {:?}", config);
 
+    let base_rand = read_file("../tests/data/random_base.txt").unwrap();
+    let shifted_rand = read_file("../tests/data/random_shifted.txt").unwrap();
+    let base_large = read_file("../tests/data/large_base.txt").unwrap();
+
     // Experiment 1: Byte-Shift Resilience
     println!("\n[EXPERIMENT 1: Byte-Shift Resilience]");
-    let base = read_file("../tests/data/random_base.txt").unwrap();
-    let shifted = read_file("../tests/data/random_shifted.txt").unwrap();
-    
-    println!("Comparing 'random_base.txt' vs 'random_shifted.txt' (1-byte shift at start)");
-    compare_dedupe(&base, &shifted, config);
+    compare_dedupe(&base_rand, &shifted_rand, config);
 
-    // Experiment 2: Modification Resilience
-    println!("\n[EXPERIMENT 2: Tail Modification Resilience]");
-    let base_large = read_file("../tests/data/large_base.txt").unwrap();
-    let modified_large = read_file("../tests/data/large_modified.txt").unwrap();
-    
-    println!("Comparing 'large_base.txt' vs 'large_modified.txt' (appended content)");
-    compare_dedupe(&base_large, &modified_large, config);
+    // Experiment 2: Corruption Resilience
+    println!("\n[EXPERIMENT 2: Single-Byte Corruption]");
+    test_corruption(&base_rand, config);
 
-    // Experiment 3: Sensitivity Analysis (Dynamic Config)
-    println!("\n[EXPERIMENT 3: Sensitivity Analysis]");
-    let mut small_config = config;
-    small_config.min_size = 2048;
-    small_config.avg_size = 4096;
-    small_config.max_size = 8192;
-    
-    println!("Using smaller chunks (Avg 4KB) on base file:");
-    compare_dedupe(&base, &base, small_config);
+    // Experiment 3: Block Reordering
+    println!("\n[EXPERIMENT 3: Block Reordering]");
+    test_reordering(&base_rand, config);
+
+    // Experiment 4: Statistical Distribution
+    println!("\n[EXPERIMENT 4: Statistical Distribution Analysis]");
+    let mut chunks = Vec::new();
+    let mut cdc = FastCDC::new(&base_rand, config);
+    while let Some(c) = cdc.next_chunk() { chunks.push(c); }
+    print_stats(&chunks);
 }
