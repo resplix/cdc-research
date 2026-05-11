@@ -3,11 +3,12 @@ use crate::config::Config;
 use std::io::Read;
 
 /// A chunk of data identified by CDC.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chunk {
     pub offset: usize,
     pub length: usize,
-    pub hash: u64, // Rolling hash or final checksum
+    pub rolling_hash: u64,
+    pub content_hash: [u8; 32],
 }
 
 pub trait Chunker {
@@ -28,7 +29,6 @@ pub struct StreamingChunker<R: Read> {
 
 impl<R: Read> StreamingChunker<R> {
     pub fn new(reader: R, config: Config) -> Self {
-        // FastCDC masks from the paper (scattered 64-bit patterns)
         let mask_s: u64 = 0x0003590703530000;
         let mask_l: u64 = 0x0000d90003530000;
 
@@ -66,7 +66,6 @@ impl<R: Read> Chunker for StreamingChunker<R> {
             return None;
         }
 
-        // Ensure we have enough data for at least one max-sized chunk if possible
         if !self.eof && (self.len - self.pos) < self.config.max_size {
             let _ = self.fill_buffer();
         }
@@ -76,49 +75,56 @@ impl<R: Read> Chunker for StreamingChunker<R> {
             return None;
         }
 
-        if remaining <= self.config.min_size {
-            let chunk = Chunk {
-                offset: self.pos,
-                length: remaining,
-                hash: 0,
-            };
-            self.pos = self.len;
-            return Some(chunk);
-        }
-
-        let mut hash = 0u64;
         let start = self.pos;
-        let mut end = start + self.config.min_size;
-        let max = (start + self.config.max_size).min(self.len);
-        let avg = start + self.config.avg_size;
+        let mut end: usize;
+        let mut hash = 0u64;
 
-        let limit_s = avg.min(max);
-        while end < limit_s {
-            hash = gear::update_hash(hash, self.buffer[end]);
-            if (hash & self.mask_s) == 0 {
-                let length = (end + 1) - start;
-                self.pos = end + 1;
-                return Some(Chunk { offset: start, length, hash });
+        if remaining <= self.config.min_size {
+            end = self.len;
+        } else {
+            end = start + self.config.min_size;
+            let max = (start + self.config.max_size).min(self.len);
+            let avg = start + self.config.avg_size;
+
+            let limit_s = avg.min(max);
+            let mut found = false;
+            while end < limit_s {
+                hash = gear::update_hash(hash, self.buffer[end]);
+                if (hash & self.mask_s) == 0 {
+                    end = end + 1;
+                    found = true;
+                    break;
+                }
+                end += 1;
             }
-            end += 1;
+
+            if !found {
+                while end < max {
+                    hash = gear::update_hash(hash, self.buffer[end]);
+                    if (hash & self.mask_l) == 0 {
+                        end = end + 1;
+                        found = true;
+                        break;
+                    }
+                    end += 1;
+                }
+            }
+            
+            if !found {
+                end = max;
+            }
         }
 
-        while end < max {
-            hash = gear::update_hash(hash, self.buffer[end]);
-            if (hash & self.mask_l) == 0 {
-                let length = (end + 1) - start;
-                self.pos = end + 1;
-                return Some(Chunk { offset: start, length, hash });
-            }
-            end += 1;
-        }
+        let length = end - start;
+        let chunk_data = &self.buffer[start..end];
+        let content_hash = blake3::hash(chunk_data).into();
 
-        let length = max - start;
-        self.pos = max;
+        self.pos = end;
         Some(Chunk {
             offset: start,
             length,
-            hash,
+            rolling_hash: hash,
+            content_hash,
         })
     }
 }
@@ -153,50 +159,57 @@ impl<'a> Chunker for FastCDC<'a> {
             return None;
         }
 
-        let remaining = self.data.len() - self.pos;
-        if remaining <= self.config.min_size {
-            let chunk = Chunk {
-                offset: self.pos,
-                length: remaining,
-                hash: 0, 
-            };
-            self.pos = self.data.len();
-            return Some(chunk);
-        }
-
-        let mut hash = 0u64;
         let start = self.pos;
-        let mut end = start + self.config.min_size;
-        let max = (start + self.config.max_size).min(self.data.len());
-        let avg = start + self.config.avg_size;
+        let remaining = self.data.len() - start;
+        let mut end: usize;
+        let mut hash = 0u64;
 
-        let limit_s = avg.min(max);
-        while end < limit_s {
-            hash = gear::update_hash(hash, self.data[end]);
-            if (hash & self.mask_s) == 0 {
-                let length = (end + 1) - start;
-                self.pos = end + 1;
-                return Some(Chunk { offset: start, length, hash });
+        if remaining <= self.config.min_size {
+            end = self.data.len();
+        } else {
+            end = start + self.config.min_size;
+            let max = (start + self.config.max_size).min(self.data.len());
+            let avg = start + self.config.avg_size;
+
+            let limit_s = avg.min(max);
+            let mut found = false;
+            while end < limit_s {
+                hash = gear::update_hash(hash, self.data[end]);
+                if (hash & self.mask_s) == 0 {
+                    end = end + 1;
+                    found = true;
+                    break;
+                }
+                end += 1;
             }
-            end += 1;
+
+            if !found {
+                while end < max {
+                    hash = gear::update_hash(hash, self.data[end]);
+                    if (hash & self.mask_l) == 0 {
+                        end = end + 1;
+                        found = true;
+                        break;
+                    }
+                    end += 1;
+                }
+            }
+
+            if !found {
+                end = max;
+            }
         }
 
-        while end < max {
-            hash = gear::update_hash(hash, self.data[end]);
-            if (hash & self.mask_l) == 0 {
-                let length = (end + 1) - start;
-                self.pos = end + 1;
-                return Some(Chunk { offset: start, length, hash });
-            }
-            end += 1;
-        }
+        let length = end - start;
+        let chunk_data = &self.data[start..end];
+        let content_hash = blake3::hash(chunk_data).into();
 
-        let length = max - start;
-        self.pos = max;
+        self.pos = end;
         Some(Chunk {
             offset: start,
             length,
-            hash,
+            rolling_hash: hash,
+            content_hash,
         })
     }
 }
