@@ -71,13 +71,14 @@ The Gear Table consists of 256 entries, each 64 bits wide. This is not accidenta
 
 Modern CPUs are 64-bit architectures. All general-purpose registers (RAX, RBX, RCX, etc.) operate natively on 64-bit values. Using 64-bit integers means:
 
-\- XOR, SHIFT, AND operations execute in 1 cycle
-\- No masking or splitting across multiple registers
-\- Full utilization of the ALU (Arithmetic Logic Unit)
+- XOR, SHIFT, AND operations execute in 1 cycle
+- No masking or splitting across multiple registers
+- Full utilization of the ALU (Arithmetic Logic Unit)
 
-\`\`\`asm
+```asm
 ; Single instruction for the entire rolling hash update
-xor rax, qword ptr \[gear\_table + rdx\*8\]
+xor rax, qword ptr [gear_table + rdx*8]
+```
 
 ### 2\. Cache Line Alignment
 
@@ -160,14 +161,8 @@ A 128-bit gear table would:
 
 ## The Bottom Line
 
-64-bit × 256 entries = 2KB is the mathematical sweet spot where:
-
--   Hardware constraints (cache lines, registers, ALU) align perfectly
-    
--   Statistical guarantees (collision resistance) exceed any realistic workload
-    
--   Memory footprint remains trivial (0.006% of a typical 32KB L1 cache)
-    
+> [!IMPORTANT]
+> **64-bit × 256 entries = 2KB** is the mathematical "sweet spot" where hardware constraints (cache lines, registers, ALU) align perfectly with statistical guarantees. Memory footprint remains trivial (0.006% of a typical 32KB L1 cache) while providing collision resistance that exceeds any realistic workload.
 
 This is why FastCDC, and every production CDC system, uses 64-bit gear tables. It's not arbitrary—it's optimal.
 
