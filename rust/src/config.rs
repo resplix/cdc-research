@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 
 /// Configuration for FastCDC chunking.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Config {
     pub min_size: usize,
     pub avg_size: usize,
