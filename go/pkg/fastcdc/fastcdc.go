@@ -1,8 +1,9 @@
 package fastcdc
 
-
 import (
 	"io"
+
+	"lukechampine.com/blake3"
 )
 
 // Config defines the parameters for the FastCDC algorithm.
@@ -23,11 +24,11 @@ func DefaultConfig() Config {
 
 // Chunk represents a segment of data identified by the CDC process.
 type Chunk struct {
-	Offset int
-	Length int
-	Hash   uint64
+	Offset      int
+	Length      int
+	RollingHash uint64
+	ContentHash [32]byte
 }
-
 
 // Chunker is the interface for stream-based content-defined chunking.
 type Chunker interface {
@@ -39,6 +40,7 @@ type StreamingChunker struct {
 	reader io.Reader
 	buf    []byte
 	pos    int
+	len    int
 	config Config
 	maskS  uint64
 	maskL  uint64
@@ -51,16 +53,102 @@ func NewStreamingChunker(r io.Reader, config Config) *StreamingChunker {
 		reader: r,
 		buf:    make([]byte, config.MaxSize*2),
 		config: config,
-		maskS:  (1 << 15) - 1,
-		maskL:  (1 << 11) - 1,
+		maskS:  0x0003590703530000,
+		maskL:  0x0000d90003530000,
 	}
 }
 
+func (s *StreamingChunker) fillBuffer() error {
+	if s.pos > 0 {
+		copy(s.buf, s.buf[s.pos:s.len])
+		s.len -= s.pos
+		s.pos = 0
+	}
+
+	n, err := s.reader.Read(s.buf[s.len:])
+	if n > 0 {
+		s.len += n
+	}
+	if err == io.EOF {
+		s.eof = true
+		return nil
+	}
+	return err
+}
+
 func (s *StreamingChunker) Next() (*Chunk, error) {
-	// Implementation for streaming would involve managing the buffer
-	// and reading from the reader when needed.
-	// For now, this is a placeholder to show architectural intent.
-	return nil, io.EOF
+	if s.eof && s.pos >= s.len {
+		return nil, nil
+	}
+
+	if !s.eof && (s.len-s.pos) < s.config.MaxSize {
+		if err := s.fillBuffer(); err != nil {
+			return nil, err
+		}
+	}
+
+	remaining := s.len - s.pos
+	if remaining == 0 {
+		return nil, nil
+	}
+
+	start := s.pos
+	var end int
+	var hash uint64
+
+	if remaining <= s.config.MinSize {
+		end = s.len
+	} else {
+		end = start + s.config.MinSize
+		max := start + s.config.MaxSize
+		if max > s.len {
+			max = s.len
+		}
+		avg := start + s.config.AvgSize
+
+		limitS := avg
+		if limitS > max {
+			limitS = max
+		}
+
+		found := false
+		for end < limitS {
+			hash = (hash << 1) + GearTable[s.buf[end]]
+			if (hash & s.maskS) == 0 {
+				end = end + 1
+				found = true
+				break
+			}
+			end++
+		}
+
+		if !found {
+			for end < max {
+				hash = (hash << 1) + GearTable[s.buf[end]]
+				if (hash & s.maskL) == 0 {
+					end = end + 1
+					found = true
+					break
+				}
+				end++
+			}
+		}
+
+		if !found {
+			end = max
+		}
+	}
+
+	length := end - start
+	contentHash := blake3.Sum256(s.buf[start:end])
+
+	s.pos = end
+	return &Chunk{
+		Offset:      start,
+		Length:      length,
+		RollingHash: hash,
+		ContentHash: contentHash,
+	}, nil
 }
 
 // FastCDC implements the Chunker interface using the FastCDC algorithm.
@@ -77,8 +165,8 @@ func NewFastCDC(data []byte, config Config) *FastCDC {
 	return &FastCDC{
 		data:   data,
 		config: config,
-		maskS:  (1 << 15) - 1,
-		maskL:  (1 << 11) - 1,
+		maskS:  0x0003590703530000,
+		maskL:  0x0000d90003530000,
 	}
 }
 
@@ -88,58 +176,62 @@ func (c *FastCDC) Next() (*Chunk, error) {
 		return nil, nil
 	}
 
-	remaining := len(c.data) - c.pos
-	if remaining <= c.config.MinSize {
-		chunk := &Chunk{
-			Offset: c.pos,
-			Length: remaining,
-			Hash:   0,
-		}
-		c.pos = len(c.data)
-		return chunk, nil
-	}
-
-	hash := uint64(0)
 	start := c.pos
-	end := start + c.config.MinSize
-	max := start + c.config.MaxSize
-	if max > len(c.data) {
-		max = len(c.data)
-	}
-	avg := start + c.config.AvgSize
+	remaining := len(c.data) - start
+	var end int
+	var hash uint64
 
-	// Phase 1: Normalized Chunking with small mask
-	limitS := avg
-	if limitS > max {
-		limitS = max
-	}
-	for end < limitS {
-		hash = (hash << 1) + GearTable[c.data[end]]
-		if (hash & c.maskS) == 0 {
-			length := (end + 1) - start
-			c.pos = end + 1
-			return &Chunk{Offset: start, Length: length, Hash: hash}, nil
+	if remaining <= c.config.MinSize {
+		end = len(c.data)
+	} else {
+		end = start + c.config.MinSize
+		max := start + c.config.MaxSize
+		if max > len(c.data) {
+			max = len(c.data)
 		}
-		end++
-	}
+		avg := start + c.config.AvgSize
 
-	// Phase 2: Normalized Chunking with large mask
-	for end < max {
-		hash = (hash << 1) + GearTable[c.data[end]]
-		if (hash & c.maskL) == 0 {
-			length := (end + 1) - start
-			c.pos = end + 1
-			return &Chunk{Offset: start, Length: length, Hash: hash}, nil
+		limitS := avg
+		if limitS > max {
+			limitS = max
 		}
-		end++
+
+		found := false
+		for end < limitS {
+			hash = (hash << 1) + GearTable[c.data[end]]
+			if (hash & c.maskS) == 0 {
+				end = end + 1
+				found = true
+				break
+			}
+			end++
+		}
+
+		if !found {
+			for end < max {
+				hash = (hash << 1) + GearTable[c.data[end]]
+				if (hash & c.maskL) == 0 {
+					end = end + 1
+					found = true
+					break
+				}
+				end++
+			}
+		}
+
+		if !found {
+			end = max
+		}
 	}
 
-	// Phase 3: Max size reached
-	length := max - start
-	c.pos = max
+	length := end - start
+	contentHash := blake3.Sum256(c.data[start:end])
+
+	c.pos = end
 	return &Chunk{
-		Offset: start,
-		Length: length,
-		Hash:   hash,
+		Offset:      start,
+		Length:      length,
+		RollingHash: hash,
+		ContentHash: contentHash,
 	}, nil
 }
