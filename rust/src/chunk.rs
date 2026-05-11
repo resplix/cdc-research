@@ -1,6 +1,9 @@
-pub use config;
+use crate::gear;
+use crate::config::Config;
+use std::io::Read;
 
 /// A chunk of data identified by CDC.
+#[derive(Debug, Clone, Copy)]
 pub struct Chunk {
     pub offset: usize,
     pub length: usize,
@@ -11,55 +14,128 @@ pub trait Chunker {
     fn next_chunk(&mut self) -> Option<Chunk>;
 }
 
-use std::io::Read;
-
 /// StreamingChunker handles CDC on an arbitrary stream.
 pub struct StreamingChunker<R: Read> {
     reader: R,
     buffer: Vec<u8>,
     pos: usize,
+    len: usize,
     config: Config,
-    // ... additional fields for state management
+    mask_s: u64,
+    mask_l: u64,
+    eof: bool,
 }
 
 impl<R: Read> StreamingChunker<R> {
     pub fn new(reader: R, config: Config) -> Self {
+        // FastCDC masks from the paper (scattered 64-bit patterns)
+        let mask_s: u64 = 0x0003590703530000;
+        let mask_l: u64 = 0x0000d90003530000;
+
         Self {
             reader,
             buffer: vec![0u8; config.max_size * 2],
             pos: 0,
+            len: 0,
             config,
+            mask_s,
+            mask_l,
+            eof: false,
         }
+    }
+
+    fn fill_buffer(&mut self) -> std::io::Result<()> {
+        if self.pos > 0 {
+            self.buffer.copy_within(self.pos..self.len, 0);
+            self.len -= self.pos;
+            self.pos = 0;
+        }
+
+        let n = self.reader.read(&mut self.buffer[self.len..])?;
+        if n == 0 {
+            self.eof = true;
+        }
+        self.len += n;
+        Ok(())
     }
 }
 
-/// FastCDC implementation.
+impl<R: Read> Chunker for StreamingChunker<R> {
+    fn next_chunk(&mut self) -> Option<Chunk> {
+        if self.eof && self.pos >= self.len {
+            return None;
+        }
+
+        // Ensure we have enough data for at least one max-sized chunk if possible
+        if !self.eof && (self.len - self.pos) < self.config.max_size {
+            let _ = self.fill_buffer();
+        }
+
+        let remaining = self.len - self.pos;
+        if remaining == 0 {
+            return None;
+        }
+
+        if remaining <= self.config.min_size {
+            let chunk = Chunk {
+                offset: self.pos,
+                length: remaining,
+                hash: 0,
+            };
+            self.pos = self.len;
+            return Some(chunk);
+        }
+
+        let mut hash = 0u64;
+        let start = self.pos;
+        let mut end = start + self.config.min_size;
+        let max = (start + self.config.max_size).min(self.len);
+        let avg = start + self.config.avg_size;
+
+        let limit_s = avg.min(max);
+        while end < limit_s {
+            hash = gear::update_hash(hash, self.buffer[end]);
+            if (hash & self.mask_s) == 0 {
+                let length = (end + 1) - start;
+                self.pos = end + 1;
+                return Some(Chunk { offset: start, length, hash });
+            }
+            end += 1;
+        }
+
+        while end < max {
+            hash = gear::update_hash(hash, self.buffer[end]);
+            if (hash & self.mask_l) == 0 {
+                let length = (end + 1) - start;
+                self.pos = end + 1;
+                return Some(Chunk { offset: start, length, hash });
+            }
+            end += 1;
+        }
+
+        let length = max - start;
+        self.pos = max;
+        Some(Chunk {
+            offset: start,
+            length,
+            hash,
+        })
+    }
+}
+
+/// FastCDC implementation for in-memory data.
 pub struct FastCDC<'a> {
     data: &'a [u8],
     pos: usize,
-    config: config::Config,
-    mask_s: u64, // Small mask for normalization
-    mask_l: u64, // Large mask for normalization
+    config: Config,
+    mask_s: u64,
+    mask_l: u64,
 }
 
 impl<'a> FastCDC<'a> {
     pub fn new(data: &'a [u8], config: Config) -> Self {
-        // Typical masks for 16KB avg chunk size
-        // mask = (1 << bits) - 1
-        //consecutive bits
-        // << n shifts the bits n times to left from nth point we start 1000...index0
-        // -1 brings 11 remove one from 11 carry towrads right hence 1111...1
-        // 0111 1111 1111 1111
-        // let mask_s = (1 << 15) - 1; 
-        // 0111 1111 1111
-        // let mask_l = (1 << 11) - 1;
-        // 0001 1111 1111 1111
-        // let mask_a = (1 << 13) - 1;
-        // FastCDC masks from the paper (scattered 64-bit patterns)
-        // These create the 48-byte sliding window effect
-        let mask_s: u64 = 0x0003590703530000LL;  // 15 '1' bits (SCATTERED)
-        let mask_l: u64 = 0x0000d90003530000LL;  // 11 '1' bits (SCATTERED)
-        let mask_a: u64 = 0x0000d90303530000LL;  // 13 '1' bits (SCATTERED)
+        let mask_s: u64 = 0x0003590703530000;
+        let mask_l: u64 = 0x0000d90003530000;
 
         Self {
             data,
@@ -80,22 +156,20 @@ impl<'a> Chunker for FastCDC<'a> {
         let remaining = self.data.len() - self.pos;
         if remaining <= self.config.min_size {
             let chunk = Chunk {
-                offset: self.pos,//byte offset in th file or steam
-                length: remaining,//remaining bytes from offset
+                offset: self.pos,
+                length: remaining,
                 hash: 0, 
             };
-            //this gets the byte position
             self.pos = self.data.len();
             return Some(chunk);
         }
-        //we start with zero, the hash changes as we slide over the window
+
         let mut hash = 0u64;
         let start = self.pos;
         let mut end = start + self.config.min_size;
         let max = (start + self.config.max_size).min(self.data.len());
         let avg = start + self.config.avg_size;
 
-        // Phase 1: Normalized Chunking with small mask
         let limit_s = avg.min(max);
         while end < limit_s {
             hash = gear::update_hash(hash, self.data[end]);
@@ -107,7 +181,6 @@ impl<'a> Chunker for FastCDC<'a> {
             end += 1;
         }
 
-        // Phase 2: Normalized Chunking with large mask
         while end < max {
             hash = gear::update_hash(hash, self.data[end]);
             if (hash & self.mask_l) == 0 {
@@ -118,7 +191,6 @@ impl<'a> Chunker for FastCDC<'a> {
             end += 1;
         }
 
-        // Phase 3: Max size reached
         let length = max - start;
         self.pos = max;
         Some(Chunk {
