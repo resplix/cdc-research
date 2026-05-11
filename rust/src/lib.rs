@@ -71,6 +71,7 @@ impl<'a> FastCDC<'a> {
         // mask = (1 << bits) - 1
         let mask_s = (1 << 15) - 1; 
         let mask_l = (1 << 11) - 1;
+        let mask_a = (1 << 13) - 1;
 
         Self {
             data,
@@ -91,14 +92,15 @@ impl<'a> Chunker for FastCDC<'a> {
         let remaining = self.data.len() - self.pos;
         if remaining <= self.config.min_size {
             let chunk = Chunk {
-                offset: self.pos,
-                length: remaining,
+                offset: self.pos,//byte offset in th file or steam
+                length: remaining,//remaining bytes from offset
                 hash: 0, 
             };
+            //this gets the byte position
             self.pos = self.data.len();
             return Some(chunk);
         }
-
+        //we start with zero, the hash changes as we slide over the window
         let mut hash = 0u64;
         let start = self.pos;
         let mut end = start + self.config.min_size;
