@@ -110,6 +110,13 @@ pub fn test_reordering(data: &[u8], config: Config) {
     let mut chunks2 = Vec::new();
     while let Some(c) = cdc2.next_chunk() { chunks2.push(c); }
 
+    println!("Trace: Midpoint index is {}", mid);
+    println!("File 1 (Original) boundaries:");
+    for c in &chunks1 { println!("  - Offset: {}, Len: {}, Hash: {:02x?}", c.offset, c.length, &c.content_hash[..4]); }
+    
+    println!("File 2 (Reordered) boundaries:");
+    for c in &chunks2 { println!("  - Offset: {}, Len: {}, Hash: {:02x?}", c.offset, c.length, &c.content_hash[..4]); }
+
     let dups = get_duplicates(&chunks1, &chunks2);
     println!("Original vs Reordered (Swapped halves)");
     println!("Duplicate Chunks: {} / {}", dups, chunks2.len());
