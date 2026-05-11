@@ -15,6 +15,8 @@ Unlike traditional Rabin Fingerprinting, FastCDC utilizes the **Gear Hash** algo
 *   **Gear Hash**: A simplified rolling hash that utilizes a pre-computed lookup table to map byte values to random 64-bit integers.
 *   **Normalized Chunk Distribution**: Solving the "chunk size variance" problem by using a dual-threshold mask to keep chunk sizes within a predictable, optimal range.
 *   **Cut-point Skipping**: Accelerating the scanning process by skipping a minimum distance after each chunk boundary.
+*   **Content-Addressing**: Leveraging **BLAKE3** for cryptographically secure chunk identification, enabling verifiable data movement.
+*   **Streaming Support**: Implementations for `io.Reader` (Go) and `Read` (Rust) allowing for zero-copy, memory-efficient chunking of multi-terabyte streams.
 
 ---
 
