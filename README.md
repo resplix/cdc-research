@@ -168,6 +168,4 @@ This is why FastCDC, and every production CDC system, uses 64-bit gear tables. I
 
 ---
 
-## /// License
-
-Proprietary. © 2026 Resplix Infrastructure. Sharding the future of data mobility.
+## © 2026 Resplix Infrastructure. Sharding the future of data mobility.
