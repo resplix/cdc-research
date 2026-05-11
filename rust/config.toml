@@ -1,0 +1,3 @@
+min_size = 8192
+avg_size = 16384
+max_size = 32768
