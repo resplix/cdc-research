@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
-use crate::chunk::{Chunk, Chunker, FastCDC};
+use crate::chunk::{Chunker, FastCDC};
 use crate::config::Config;
 
 /// Read a file into a byte vector.
