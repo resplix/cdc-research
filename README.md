@@ -83,7 +83,7 @@ xor rax, qword ptr \[gear\_table + rdx\*8\]
 
 CPU cache lines are 64 bytes wide. Since each table entry is 8 bytes:
 
-text
+ ```text
 
 Cache line (64 bytes) = 8 × (64-bit gear entries)
 
@@ -94,7 +94,7 @@ This means:
 -   The entire 2KB table occupies exactly 32 cache lines
     
 -   Sequential byte access maintains near-100% cache hit rates
-    
+```
 
 ### 3\. Collision Resistance (The Birthday Paradox)
 
@@ -126,7 +126,7 @@ The 64-bit choice maximizes entropy per byte while maintaining optimal cache res
 
 ### 5\. Practical Throughput Impact
 
-text
+```text
 
 With 64-bit gear table:
 - L1 hit: 1-3 cycles
