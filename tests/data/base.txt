@@ -1,0 +1,26 @@
+This is a base research file for Resplix CDC investigation. 
+It contains enough text to see how chunking works across boundaries. 
+Repeated patterns like: ABCDEFGHIJKLMNOPQRSTUVWXYZ are helpful for testing deduplication.
+Line 1: Some content here.
+Line 2: Some content here.
+Line 3: Some content here.
+Line 4: Some content here.
+Line 5: Some content here.
+Line 6: Some content here.
+Line 7: Some content here.
+Line 8: Some content here.
+Line 9: Some content here.
+Line 10: Some content here.
+(Adding more to ensure we cross the 8KB min_size)
+... [Repeated many times] ...
+Line 100: Some content here.
+Line 101: Some content here.
+Line 102: Some content here.
+Line 103: Some content here.
+Line 104: Some content here.
+Line 105: Some content here.
+Line 106: Some content here.
+Line 107: Some content here.
+Line 108: Some content here.
+Line 109: Some content here.
+Line 110: Some content here.
