@@ -69,13 +69,20 @@ impl<'a> FastCDC<'a> {
     pub fn new(data: &'a [u8], config: Config) -> Self {
         // Typical masks for 16KB avg chunk size
         // mask = (1 << bits) - 1
-        let mask_s = (1 << 15) - 1; 
-        let mask_l = (1 << 11) - 1;
-        let mask_a = (1 << 13) - 1;
-
-        // let mask_s = 0x0003590703530000LL;  // 15 '1' bits (SCATTERED)
-        // let mask_l = 0x0000d90003530000LL;  // 11 '1' bits (SCATTERED)
-        // let mask_a = 0x0000d90303530000LL;  // 13 '1' bits (SCATTERED)
+        //consecutive bits
+        // << n shifts the bits n times to left from nth point we start 1000...index0
+        // -1 brings 11 remove one from 11 carry towrads right hence 1111...1
+        // 0111 1111 1111 1111
+        // let mask_s = (1 << 15) - 1; 
+        // 0111 1111 1111
+        // let mask_l = (1 << 11) - 1;
+        // 0001 1111 1111 1111
+        // let mask_a = (1 << 13) - 1;
+        // FastCDC masks from the paper (scattered 64-bit patterns)
+        // These create the 48-byte sliding window effect
+        let mask_s: u64 = 0x0003590703530000LL;  // 15 '1' bits (SCATTERED)
+        let mask_l: u64 = 0x0000d90003530000LL;  // 11 '1' bits (SCATTERED)
+        let mask_a: u64 = 0x0000d90303530000LL;  // 13 '1' bits (SCATTERED)
 
         Self {
             data,
