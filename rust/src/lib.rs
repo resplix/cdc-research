@@ -73,6 +73,10 @@ impl<'a> FastCDC<'a> {
         let mask_l = (1 << 11) - 1;
         let mask_a = (1 << 13) - 1;
 
+        // let mask_s = 0x0003590703530000LL;  // 15 '1' bits (SCATTERED)
+        // let mask_l = 0x0000d90003530000LL;  // 11 '1' bits (SCATTERED)
+        // let mask_a = 0x0000d90303530000LL;  // 13 '1' bits (SCATTERED)
+
         Self {
             data,
             pos: 0,
