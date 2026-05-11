@@ -14,30 +14,37 @@ pub fn read_file(path: &str) -> io::Result<Vec<u8>> {
 /// Compare two datasets and return the deduplication ratio.
 pub fn compare_dedupe(data1: &[u8], data2: &[u8], config: Config) {
     let mut cdc1 = FastCDC::new(data1, config);
-    let mut hashes1 = Vec::new();
+    let mut chunks1 = Vec::new();
     while let Some(chunk) = cdc1.next_chunk() {
-        hashes1.push(chunk.content_hash);
+        chunks1.push(chunk);
     }
 
     let mut cdc2 = FastCDC::new(data2, config);
-    let mut hashes2 = Vec::new();
+    let mut chunks2 = Vec::new();
     while let Some(chunk) = cdc2.next_chunk() {
-        hashes2.push(chunk.content_hash);
+        chunks2.push(chunk);
     }
 
-    let total_chunks = hashes2.len();
-    let mut duplicates = 0;
+    println!("--- Chunk Breakdown ---");
+    print!("File 1 Chunks: ");
+    for c in &chunks1 { print!("[{}KB] ", c.length / 1024); }
+    println!("\nFile 2 Chunks: ");
+    for c in &chunks2 { print!("[{}KB] ", c.length / 1024); }
+    println!("\n");
 
-    for hash in &hashes2 {
-        if hashes1.contains(hash) {
+    let total_chunks = chunks2.len();
+    let mut duplicates = 0;
+    
+    let hashes1: Vec<_> = chunks1.iter().map(|c| c.content_hash).collect();
+
+    for chunk in &chunks2 {
+        if hashes1.contains(&chunk.content_hash) {
             duplicates += 1;
         }
     }
 
     println!("--- Deduplication Report ---");
-    println!("File 1 Chunks: {}", hashes1.len());
-    println!("File 2 Chunks: {}", hashes2.len());
-    println!("Duplicate Chunks: {}", duplicates);
+    println!("Duplicate Chunks: {} / {}", duplicates, total_chunks);
     println!("Dedupe Ratio: {:.2}%", (duplicates as f64 / total_chunks as f64) * 100.0);
 }
 
