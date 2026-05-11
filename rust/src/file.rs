@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
-use crate::chunk::{Chunker, FastCDC};
+use crate::chunk::{Chunk, Chunker, FastCDC};
 use crate::config::Config;
 
 /// Read a file into a byte vector.
@@ -15,37 +15,105 @@ pub fn read_file(path: &str) -> io::Result<Vec<u8>> {
 pub fn compare_dedupe(data1: &[u8], data2: &[u8], config: Config) {
     let mut cdc1 = FastCDC::new(data1, config);
     let mut chunks1 = Vec::new();
-    while let Some(chunk) = cdc1.next_chunk() {
-        chunks1.push(chunk);
-    }
+    while let Some(chunk) = cdc1.next_chunk() { chunks1.push(chunk); }
 
     let mut cdc2 = FastCDC::new(data2, config);
     let mut chunks2 = Vec::new();
-    while let Some(chunk) = cdc2.next_chunk() {
-        chunks2.push(chunk);
-    }
+    while let Some(chunk) = cdc2.next_chunk() { chunks2.push(chunk); }
+
+    let dups = get_duplicates(&chunks1, &chunks2);
+    let total = chunks2.len();
 
     println!("--- Chunk Breakdown ---");
-    print!("File 1 Chunks: ");
+    print!("File 1: ");
     for c in &chunks1 { print!("[{}KB] ", c.length / 1024); }
-    println!("\nFile 2 Chunks: ");
+    println!("\nFile 2: ");
     for c in &chunks2 { print!("[{}KB] ", c.length / 1024); }
     println!("\n");
 
-    let total_chunks = chunks2.len();
-    let mut duplicates = 0;
-    
-    let hashes1: Vec<_> = chunks1.iter().map(|c| c.content_hash).collect();
+    println!("--- Deduplication Report ---");
+    println!("Duplicate Chunks: {} / {}", dups, total);
+    println!("Dedupe Ratio:     {:.2}%", (dups as f64 / total as f64) * 100.0);
+}
 
-    for chunk in &chunks2 {
+/// Detailed statistical report of chunk distribution.
+pub fn print_stats(chunks: &[Chunk]) {
+    if chunks.is_empty() { return; }
+    
+    let mut min = usize::MAX;
+    let mut max = 0;
+    let mut sum = 0;
+    
+    for c in chunks {
+        if c.length < min { min = c.length; }
+        if c.length > max { max = c.length; }
+        sum += c.length;
+    }
+    
+    let avg = sum / chunks.len();
+    
+    println!("--- Distribution Statistics ---");
+    println!("Total Chunks: {}", chunks.len());
+    println!("Min Size:     {:.2} KB", min as f64 / 1024.0);
+    println!("Max Size:     {:.2} KB", max as f64 / 1024.0);
+    println!("Avg Size:     {:.2} KB", avg as f64 / 1024.0);
+    println!("Total Data:   {:.2} KB", sum as f64 / 1024.0);
+}
+
+/// Compare two sets of chunks and return duplicate count.
+pub fn get_duplicates(chunks1: &[Chunk], chunks2: &[Chunk]) -> usize {
+    let hashes1: Vec<_> = chunks1.iter().map(|c| c.content_hash).collect();
+    let mut duplicates = 0;
+    for chunk in chunks2 {
         if hashes1.contains(&chunk.content_hash) {
             duplicates += 1;
         }
     }
+    duplicates
+}
 
-    println!("--- Deduplication Report ---");
-    println!("Duplicate Chunks: {} / {}", duplicates, total_chunks);
-    println!("Dedupe Ratio: {:.2}%", (duplicates as f64 / total_chunks as f64) * 100.0);
+/// Experiment 4: Single-Byte Corruption.
+pub fn test_corruption(data: &[u8], config: Config) {
+    let mut corrupted = data.to_vec();
+    if corrupted.len() > 5000 {
+        corrupted[5000] ^= 0xFF; // Flip bits of the 5000th byte
+    }
+
+    let mut cdc1 = FastCDC::new(data, config);
+    let mut chunks1 = Vec::new();
+    while let Some(c) = cdc1.next_chunk() { chunks1.push(c); }
+
+    let mut cdc2 = FastCDC::new(&corrupted, config);
+    let mut chunks2 = Vec::new();
+    while let Some(c) = cdc2.next_chunk() { chunks2.push(c); }
+
+    let dups = get_duplicates(&chunks1, &chunks2);
+    println!("Original vs Corrupted (1-byte change at index 5000)");
+    println!("Duplicate Chunks: {} / {}", dups, chunks2.len());
+    println!("Dedupe Ratio:     {:.2}%", (dups as f64 / chunks2.len() as f64) * 100.0);
+}
+
+/// Experiment 5: Block Reordering.
+pub fn test_reordering(data: &[u8], config: Config) {
+    let mut reordered = Vec::new();
+    let mid = data.len() / 2;
+    
+    // Swap first half and second half
+    reordered.extend_from_slice(&data[mid..]);
+    reordered.extend_from_slice(&data[..mid]);
+
+    let mut cdc1 = FastCDC::new(data, config);
+    let mut chunks1 = Vec::new();
+    while let Some(c) = cdc1.next_chunk() { chunks1.push(c); }
+
+    let mut cdc2 = FastCDC::new(&reordered, config);
+    let mut chunks2 = Vec::new();
+    while let Some(c) = cdc2.next_chunk() { chunks2.push(c); }
+
+    let dups = get_duplicates(&chunks1, &chunks2);
+    println!("Original vs Reordered (Swapped halves)");
+    println!("Duplicate Chunks: {} / {}", dups, chunks2.len());
+    println!("Dedupe Ratio:     {:.2}%", (dups as f64 / chunks2.len() as f64) * 100.0);
 }
 
 /// Simulate an insertion test.
