@@ -16,13 +16,13 @@ pub fn compare_dedupe(data1: &[u8], data2: &[u8], config: Config) {
     let mut cdc1 = FastCDC::new(data1, config);
     let mut hashes1 = Vec::new();
     while let Some(chunk) = cdc1.next_chunk() {
-        hashes1.push(chunk.hash);
+        hashes1.push(chunk.content_hash);
     }
 
     let mut cdc2 = FastCDC::new(data2, config);
     let mut hashes2 = Vec::new();
     while let Some(chunk) = cdc2.next_chunk() {
-        hashes2.push(chunk.hash);
+        hashes2.push(chunk.content_hash);
     }
 
     let total_chunks = hashes2.len();
