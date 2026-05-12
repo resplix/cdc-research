@@ -64,8 +64,9 @@ mod tests {
     }
 
     #[test]
-    fn test_avx2_matches_scalar() {
-        // Verify that the AVX2 path produces identical results to scalar
+    fn test_simd_matches_scalar() {
+        // Verify that SIMD paths produce identical results to scalar.
+        // This test auto-selects the right SIMD path for the current arch.
         let mut data = vec![0u8; 64 * 1024]; // 64KB
         let mut rng: u64 = 0xCAFEBABE;
         for byte in data.iter_mut() {
@@ -77,6 +78,7 @@ mod tests {
 
         let scalar_result = gear::find_cutpoint_scalar(&data, 0, data.len(), mask);
 
+        // ── x86_64: AVX2 ──────────────────────────────────────────────────────
         #[cfg(target_arch = "x86_64")]
         {
             if is_x86_feature_detected!("avx2") {
@@ -94,11 +96,34 @@ mod tests {
             }
         }
 
-        // Also verify with different start offsets (exercises the scalar tail)
+        // ── AArch64: NEON ──────────────────────────────────────────────────────
+        #[cfg(target_arch = "aarch64")]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                let neon_result = unsafe {
+                    gear::find_cutpoint_neon(&data, 0, data.len(), mask)
+                };
+                assert_eq!(
+                    scalar_result, neon_result,
+                    "NEON and Scalar must produce identical cut-points.\n\
+                     Scalar: pos={}, hash={:#018x}\n\
+                     NEON:   pos={}, hash={:#018x}",
+                    scalar_result.0, scalar_result.1,
+                    neon_result.0, neon_result.1,
+                );
+            }
+        }
+
+        // Verify dispatch path matches scalar at multiple unaligned offsets.
+        // Exercises the 0-3 byte scalar tail in both AVX2 and NEON implementations.
         for offset in [1, 2, 3, 7, 15, 63] {
             let scalar = gear::find_cutpoint_scalar(&data, offset, data.len(), mask);
             let dispatched = gear::find_cutpoint(&data, offset, data.len(), mask);
-            assert_eq!(scalar, dispatched, "Mismatch at offset {}", offset);
+            assert_eq!(
+                scalar, dispatched,
+                "Dispatch mismatch at offset={}: scalar={:?} vs dispatch={:?}",
+                offset, scalar, dispatched
+            );
         }
     }
 
