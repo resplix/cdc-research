@@ -167,36 +167,24 @@ impl<'a> Chunker for FastCDC<'a> {
         if remaining <= self.config.min_size {
             end = self.data.len();
         } else {
-            end = start + self.config.min_size;
-            let max = (start + self.config.max_size).min(self.data.len());
-            let avg = start + self.config.avg_size;
-
-            let limit_s = avg.min(max);
             let mut found = false;
-            while end < limit_s {
-                hash = gear::update_hash(hash, self.data[end]);
-                if (hash & self.mask_s) == 0 {
-                    end = end + 1;
-                    found = true;
-                    break;
-                }
-                end += 1;
+            let start_scan = start + self.config.min_size;
+            let max_scan = (start + self.config.max_size).min(self.data.len());
+            let avg_scan = (start + self.config.avg_size).min(max_scan);
+
+            // 1. Scan with small mask (Normalized Distribution)
+            let (new_pos, h) = gear::find_cutpoint(self.data, start_scan, avg_scan, self.mask_s);
+            if new_pos < avg_scan || (h & self.mask_s) == 0 {
+                end = new_pos;
+                hash = h;
+                found = true;
             }
 
+            // 2. Scan with large mask if no cut-point found
             if !found {
-                while end < max {
-                    hash = gear::update_hash(hash, self.data[end]);
-                    if (hash & self.mask_l) == 0 {
-                        end = end + 1;
-                        found = true;
-                        break;
-                    }
-                    end += 1;
-                }
-            }
-
-            if !found {
-                end = max;
+                let (new_pos, h) = gear::find_cutpoint(self.data, avg_scan, max_scan, self.mask_l);
+                end = new_pos;
+                hash = h;
             }
         }
 
