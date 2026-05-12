@@ -26,6 +26,7 @@ fn bench_gear_cutpoint(c: &mut Criterion) {
         b.iter(|| gear::find_cutpoint_scalar(black_box(&data), 0, data.len(), mask))
     });
 
+    // ── x86_64: AVX2 via vpgatherqq ─────────────────────────────────────────
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") {
@@ -35,6 +36,18 @@ fn bench_gear_cutpoint(c: &mut Criterion) {
         }
     }
 
+    // ── AArch64: NEON via vshl_n_u64 + vadd_u64 (4-byte unrolled) ───────────
+    // NEON has no gather — win comes from loop unrolling + bounds-check elimination
+    #[cfg(target_arch = "aarch64")]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") {
+            group.bench_function("NEON", |b| {
+                b.iter(|| unsafe { gear::find_cutpoint_neon(black_box(&data), 0, data.len(), mask) })
+            });
+        }
+    }
+
+    // Dispatch always runs — shows overhead of runtime feature detection
     group.bench_function("Dispatch", |b| {
         b.iter(|| gear::find_cutpoint(black_box(&data), 0, data.len(), mask))
     });
@@ -49,7 +62,7 @@ fn bench_cdc_pipeline(c: &mut Criterion) {
 
     let config = Config::default();
 
-    // Test multiple sizes
+    // Test multiple sizes to reveal cache effects (64KB → L1, 256KB → L2, 1MB+ → L3/RAM)
     for &size in &[64 * 1024, 256 * 1024, 1024 * 1024, 4 * 1024 * 1024] {
         let data = make_random_data(size, 0xCAFEBABE);
         let label = format!("{}KB", size / 1024);
@@ -83,6 +96,7 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
     let zeros = vec![0u8; size];
     let random = make_random_data(size, 0x12345678);
 
+    // Zeros: all gear lookups hit the same cache line — best-case cache scenario
     group.bench_function("Zeros_1MB", |b| {
         b.iter(|| {
             let mut cdc = FastCDC::new(black_box(&zeros), config);
@@ -90,6 +104,7 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
         })
     });
 
+    // Random: uniform distribution across all 256 entries — realistic workload
     group.bench_function("Random_1MB", |b| {
         b.iter(|| {
             let mut cdc = FastCDC::new(black_box(&random), config);
