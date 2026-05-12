@@ -116,6 +116,10 @@ jobs:
       # ── CPU Capability Detection ─────────────────────────────────────────────────
       # Dump raw CPU flags so we know exactly what this runner supports.
       # This is the "ground truth" for SIMD claims.
+      # Note: || true on all grep/sysctl — a non-match must NOT fail the step
+      #       because x86_64 and AArch64 use different /proc/cpuinfo key names:
+      #         x86_64  → "flags"    (lowercase)
+      #         AArch64 → "Features" (capital F)
       - name: Detect CPU capabilities
         shell: bash
         run: |
@@ -125,22 +129,32 @@ jobs:
           echo "=== CPU INFO ===" | tee ci-results/cpu-info.txt
 
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            # Linux: /proc/cpuinfo has the flags line
-            grep -m1 'model name' /proc/cpuinfo  | tee -a ci-results/cpu-info.txt
-            grep -m1 '^flags'     /proc/cpuinfo  | tee -a ci-results/cpu-info.txt
+            # Model name — present on both x86 and ARM
+            grep -m1 'model name' /proc/cpuinfo | tee -a ci-results/cpu-info.txt || \
+              grep -m1 'CPU part'  /proc/cpuinfo | tee -a ci-results/cpu-info.txt || true
+
+            # x86_64 uses lowercase 'flags'; AArch64 uses 'Features'
+            grep -m1 -E '^(flags|Features)\s*:' /proc/cpuinfo | tee -a ci-results/cpu-info.txt || true
+
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             # macOS: sysctl has CPU brand and features
-            sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model
-            sysctl -n machdep.cpu.features     2>/dev/null || echo "N/A (Apple Silicon — NEON implicit)"
-            sysctl -n hw.optional.AdvSIMD      2>/dev/null || true
+            sysctl -n machdep.cpu.brand_string 2>/dev/null | tee -a ci-results/cpu-info.txt || \
+              sysctl -n hw.model              2>/dev/null | tee -a ci-results/cpu-info.txt || true
+            sysctl -n machdep.cpu.features    2>/dev/null | tee -a ci-results/cpu-info.txt || \
+              echo "Apple Silicon — NEON implicit (ARMv8.5-A)" | tee -a ci-results/cpu-info.txt
+            sysctl -n hw.optional.AdvSIMD     2>/dev/null | tee -a ci-results/cpu-info.txt || true
+
           elif [[ "$RUNNER_OS" == "Windows" ]]; then
-            # Windows: wmic or powershell
-            powershell -Command "Get-WmiObject Win32_Processor | Select-Object Name, Description | Format-List"
+            powershell -Command \
+              "Get-WmiObject Win32_Processor | Select-Object Name, Description | Format-List" \
+              | tee -a ci-results/cpu-info.txt || true
           fi
 
-          # Cross-platform arch check
+          # Cross-platform arch info — always available
           echo "RUNNER_ARCH=${RUNNER_ARCH}" | tee -a ci-results/cpu-info.txt
-          echo "uname=$(uname -m 2>/dev/null || echo 'windows')" | tee -a ci-results/cpu-info.txt
+          echo "uname_m=$(uname -m 2>/dev/null || echo 'windows')" | tee -a ci-results/cpu-info.txt
+
+          cat ci-results/cpu-info.txt
 
       - name: Show toolchain versions
         shell: bash
