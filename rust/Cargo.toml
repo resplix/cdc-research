@@ -18,3 +18,9 @@ criterion = "0.5"
 [[bench]]
 name = "cdc_bench"
 harness = false
+
+[profile.release]
+lto = "thin"
+
+[profile.bench]
+lto = "thin"
