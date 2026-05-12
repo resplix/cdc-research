@@ -111,40 +111,69 @@ unsafe fn find_cutpoint_avx2(data: &[u8], start: usize, max: usize, mask: u64) -
     let mut hash = 0u64;
     let mut pos = start;
     let table_ptr = GEAR_TABLE.as_ptr() as *const i64;
+    
+    let mask_v = _mm256_set1_epi64x(mask as i64);
+    let zero_v = _mm256_setzero_si256();
 
     // Process in blocks of 4 to saturate the 256-bit AVX2 registers
-    while pos + 4 <= max { //64-bit alignment * 4 = 256-bit
-        
-        // 1. Load 4 bytes into the bottom of an XMM register
+    while pos + 4 <= max {
+        // 1. Load 4 bytes and expand to 64-bit indices
         let b_raw = *(data.as_ptr().add(pos) as *const u32);
         let b_vec = _mm_cvtsi32_si128(b_raw as i32);
-        
-        // 2. Zero-extend bytes to 64-bit indices in a YMM register
         let indices = _mm256_cvtepu8_epi64(b_vec);
         
-        // 3. Parallel Gather: Fetch 4 u64s from GEAR_TABLE simultaneously
+        // 2. Parallel Gather 4 Gear values: [g0, g1, g2, g3]
         let gear_vals = _mm256_i64gather_epi64(table_ptr, indices, 8);
         
-        // 4. Sequential Update (The "Gear Dependency")
-        // Even with SIMD, we must respect the bit-shift order.
-        // Modern CPUs (like Skylake) will pipeline these extracts.
+        // 3. Parallel Rolling Hash Calculation (Multiple Window Offsets)
+        // H1 = (H << 1) + g0
+        // H2 = (H << 2) + (g0 << 1) + g1
+        // H3 = (H << 3) + (g0 << 2) + (g1 << 1) + g2
+        // H4 = (H << 4) + (g0 << 3) + (g1 << 2) + (g2 << 1) + g3
+
+        let h_base = _mm256_set_epi64x(
+            (hash << 4) as i64,
+            (hash << 3) as i64,
+            (hash << 2) as i64,
+            (hash << 1) as i64,
+        );
+
+        let g = gear_vals;
         
-        let g0 = _mm256_extract_epi64(gear_vals, 0) as u64;
-        hash = (hash << 1).wrapping_add(g0);
-        if (hash & mask) == 0 { return (pos + 1, hash); }
+        // s1: [0, g0<<1, g1<<1, g2<<1]
+        let s1 = _mm256_slli_epi64(_mm256_permute4x64_epi64(g, 0x90), 1);
+        let lane_mask_1 = _mm256_set_epi64x(-1, -1, -1, 0);
+        let s1 = _mm256_and_si256(s1, lane_mask_1);
 
-        let g1 = _mm256_extract_epi64(gear_vals, 1) as u64;
-        hash = (hash << 1).wrapping_add(g1);
-        if (hash & mask) == 0 { return (pos + 2, hash); }
+        // s2: [0, 0, g0<<2, g1<<2]
+        let s2 = _mm256_slli_epi64(_mm256_permute4x64_epi64(g, 0x40), 2);
+        let lane_mask_2 = _mm256_set_epi64x(-1, -1, 0, 0);
+        let s2 = _mm256_and_si256(s2, lane_mask_2);
 
-        let g2 = _mm256_extract_epi64(gear_vals, 2) as u64;
-        hash = (hash << 1).wrapping_add(g2);
-        if (hash & mask) == 0 { return (pos + 3, hash); }
+        // s3: [0, 0, 0, g0<<3]
+        let s3 = _mm256_slli_epi64(_mm256_permute4x64_epi64(g, 0x00), 3);
+        let lane_mask_3 = _mm256_set_epi64x(-1, 0, 0, 0);
+        let s3 = _mm256_and_si256(s3, lane_mask_3);
 
-        let g3 = _mm256_extract_epi64(gear_vals, 3) as u64;
-        hash = (hash << 1).wrapping_add(g3);
-        if (hash & mask) == 0 { return (pos + 4, hash); }
+        let h_v = _mm256_add_epi64(h_base, _mm256_add_epi64(g, _mm256_add_epi64(s1, _mm256_add_epi64(s2, s3))));
 
+        // 4. Parallel Mask Check
+        let match_v = _mm256_and_si256(h_v, mask_v);
+        let cmp_v = _mm256_cmpeq_epi64(match_v, zero_v);
+        let m = _mm256_movemask_pd(_mm256_castsi256_pd(cmp_v));
+        
+        if m != 0 {
+            let lane = m.trailing_zeros() as usize;
+            let final_hash = match lane {
+                0 => _mm256_extract_epi64(h_v, 0),
+                1 => _mm256_extract_epi64(h_v, 1),
+                2 => _mm256_extract_epi64(h_v, 2),
+                _ => _mm256_extract_epi64(h_v, 3),
+            } as u64;
+            return (pos + lane + 1, final_hash);
+        }
+
+        hash = _mm256_extract_epi64(h_v, 3) as u64;
         pos += 4;
     }
 
