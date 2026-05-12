@@ -76,3 +76,86 @@ pub const GEAR_TABLE: [u64; 256] = [
 pub fn update_hash(hash: u64, byte: u8) -> u64 {
     (hash << 1).wrapping_add(GEAR_TABLE[byte as usize])
 }
+
+/// High-performance cut-point search. 
+/// Dispatches to AVX2 if available, otherwise uses an optimized scalar loop.
+pub fn find_cutpoint(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            return unsafe { find_cutpoint_avx2(data, start, max, mask) };
+        }
+    }
+    find_cutpoint_scalar(data, start, max, mask)
+}
+
+#[inline(always)]
+fn find_cutpoint_scalar(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
+    let mut hash = 0u64;
+    let mut pos = start;
+    while pos < max {
+        hash = (hash << 1).wrapping_add(GEAR_TABLE[data[pos] as usize]);
+        if (hash & mask) == 0 {
+            return (pos + 1, hash);
+        }
+        pos += 1;
+    }
+    (max, hash)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn find_cutpoint_avx2(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
+    use std::arch::x86_64::*;
+
+    let mut hash = 0u64;
+    let mut pos = start;
+    let table_ptr = GEAR_TABLE.as_ptr() as *const i64;
+
+    // Process in blocks of 4 to saturate the 256-bit AVX2 registers
+    while pos + 4 <= max { //64-bit alignment * 4 = 256-bit
+        
+        // 1. Load 4 bytes into the bottom of an XMM register
+        let b_raw = *(data.as_ptr().add(pos) as *const u32);
+        let b_vec = _mm_cvtsi32_si128(b_raw as i32);
+        
+        // 2. Zero-extend bytes to 64-bit indices in a YMM register
+        let indices = _mm256_cvtepu8_epi64(b_vec);
+        
+        // 3. Parallel Gather: Fetch 4 u64s from GEAR_TABLE simultaneously
+        let gear_vals = _mm256_i64gather_epi64(table_ptr, indices, 8);
+        
+        // 4. Sequential Update (The "Gear Dependency")
+        // Even with SIMD, we must respect the bit-shift order.
+        // Modern CPUs (like Skylake) will pipeline these extracts.
+        
+        let g0 = _mm256_extract_epi64(gear_vals, 0) as u64;
+        hash = (hash << 1).wrapping_add(g0);
+        if (hash & mask) == 0 { return (pos + 1, hash); }
+
+        let g1 = _mm256_extract_epi64(gear_vals, 1) as u64;
+        hash = (hash << 1).wrapping_add(g1);
+        if (hash & mask) == 0 { return (pos + 2, hash); }
+
+        let g2 = _mm256_extract_epi64(gear_vals, 2) as u64;
+        hash = (hash << 1).wrapping_add(g2);
+        if (hash & mask) == 0 { return (pos + 3, hash); }
+
+        let g3 = _mm256_extract_epi64(gear_vals, 3) as u64;
+        hash = (hash << 1).wrapping_add(g3);
+        if (hash & mask) == 0 { return (pos + 4, hash); }
+
+        pos += 4;
+    }
+
+    // Handle remaining bytes
+    while pos < max {
+        hash = (hash << 1).wrapping_add(GEAR_TABLE[data[pos] as usize]);
+        if (hash & mask) == 0 {
+            return (pos + 1, hash);
+        }
+        pos += 1;
+    }
+
+    (max, hash)
+}
