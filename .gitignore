@@ -31,4 +31,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-target
+
+# Rust build artifacts (but NOT Cargo.lock — keep it for reproducible CI)
+rust/target/
+
+# Criterion HTML benchmark reports (generated, large, not useful to track)
+rust/target/criterion/
