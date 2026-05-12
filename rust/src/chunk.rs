@@ -178,6 +178,10 @@ impl<'a> Chunker for FastCDC<'a> {
                 end = new_pos;
                 hash = h;
                 found = true;
+            } else {
+                // Default in case of loop logic
+                end = max_scan;
+                hash = h;
             }
 
             // 2. Scan with large mask if no cut-point found
