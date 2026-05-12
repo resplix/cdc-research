@@ -100,7 +100,7 @@ pub unsafe fn find_cutpoint_avx2(data: &[u8], start: usize, max: usize, mask: u6
     // Process 4 bytes per iteration — 4 × 64-bit = 256-bit AVX2 register
     while pos + 4 <= max {
         // 1. Load 4 bytes into XMM, zero-extend each to 64-bit in YMM
-        let b_raw = *(data.as_ptr().add(pos) as *const u32);
+        let b_raw = std::ptr::read_unaligned(data.as_ptr().add(pos) as *const u32);
         let b_vec = _mm_cvtsi32_si128(b_raw as i32);
         let indices = _mm256_cvtepu8_epi64(b_vec);
 
