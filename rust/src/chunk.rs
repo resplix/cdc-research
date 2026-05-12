@@ -76,11 +76,12 @@ impl<R: Read> Chunker for StreamingChunker<R> {
         }
 
         let start = self.pos;
-        let mut end: usize;
-        let mut hash = 0u64;
+        let end: usize;
+        let hash: u64;
 
         if remaining <= self.config.min_size {
             end = self.len;
+            hash = 0;
         } else {
             let start_scan = start + self.config.min_size;
             let max_scan = (start + self.config.max_size).min(self.len);
@@ -145,11 +146,12 @@ impl<'a> Chunker for FastCDC<'a> {
 
         let start = self.pos;
         let remaining = self.data.len() - start;
-        let mut end: usize;
-        let mut hash = 0u64;
+        let end: usize;
+        let hash: u64;
 
         if remaining <= self.config.min_size {
             end = self.data.len();
+            hash = 0;
         } else {
             let start_scan = start + self.config.min_size;
             let max_scan = (start + self.config.max_size).min(self.data.len());
