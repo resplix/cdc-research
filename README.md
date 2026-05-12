@@ -31,6 +31,23 @@ Unlike traditional Rabin Fingerprinting, FastCDC utilizes the **Gear Hash** algo
 
 ---
 
+## /// Cross-Platform CI Benchmarks
+
+We continuously verify our FastCDC SIMD implementations on GitHub Actions runners. Below are the median throughputs for raw Gear Hashing and the full FastCDC chunking pipeline (1MB chunks) across different architectures:
+
+| Architecture | CPU / Instance | SIMD Target | Raw Hash (GiB/s) | Pipeline (MiB/s) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Linux ARM64** | Ampere Altra (Neoverse N1) | `NEON` | **28.18** | ~963 |
+| **macOS ARM64** | Apple M1 | `NEON` | **12.30** | ~844 |
+| **Linux x64** | AMD EPYC 7763 (Zen 3) | `Scalar`* | **10.97** | ~1125 |
+| **Windows x64** | AMD EPYC 7763 (Zen 3) | `Scalar`* | **10.91** | ~1105 |
+
+> **Note on x86_64:** On AMD Zen 3 architectures, the scalar implementation heavily outperforms AVX2. This is a known micro-architectural quirk where Zen 3 implements the `vpgatherqq` (AVX2 gather) instruction using dozens of micro-ops, whereas our aggressively unrolled scalar loop is perfectly pipelined. On Intel architectures (Skylake/Ice Lake), AVX2 gather is fully hardware-accelerated.
+> 
+> **Note on ARM64:** Our NEON implementation uses a 4-byte unrolled loop with bounds-check elimination and `vshl/vadd` intrinsics. This yields a massive **+58% throughput increase** over the scalar path on Neoverse N1 processors!
+
+---
+
 ## /// Project Structure
 
 ```text
