@@ -90,7 +90,7 @@ pub fn find_cutpoint(data: &[u8], start: usize, max: usize, mask: u64) -> (usize
 }
 
 #[inline(always)]
-fn find_cutpoint_scalar(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
+pub fn find_cutpoint_scalar(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
     let mut hash = 0u64;
     let mut pos = start;
     while pos < max {
@@ -105,7 +105,7 @@ fn find_cutpoint_scalar(data: &[u8], start: usize, max: usize, mask: u64) -> (us
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-unsafe fn find_cutpoint_avx2(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
+pub unsafe fn find_cutpoint_avx2(data: &[u8], start: usize, max: usize, mask: u64) -> (usize, u64) {
     use std::arch::x86_64::*;
 
     let mut hash = 0u64;
