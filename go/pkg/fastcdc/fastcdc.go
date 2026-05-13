@@ -99,43 +99,30 @@ func (s *StreamingChunker) Next() (*Chunk, error) {
 	if remaining <= s.config.MinSize {
 		end = s.len
 	} else {
-		end = start + s.config.MinSize
-		max := start + s.config.MaxSize
-		if max > s.len {
-			max = s.len
-		}
-		avg := start + s.config.AvgSize
-
-		limitS := avg
-		if limitS > max {
-			limitS = max
-		}
-
 		found := false
-		for end < limitS {
-			hash = (hash << 1) + GearTable[s.buf[end]]
-			if (hash & s.maskS) == 0 {
-				end = end + 1
-				found = true
-				break
-			}
-			end++
+		startScan := start + s.config.MinSize
+		maxScan := start + s.config.MaxSize
+		if maxScan > s.len {
+			maxScan = s.len
+		}
+		avgScan := start + s.config.AvgSize
+		if avgScan > maxScan {
+			avgScan = maxScan
 		}
 
-		if !found {
-			for end < max {
-				hash = (hash << 1) + GearTable[s.buf[end]]
-				if (hash & s.maskL) == 0 {
-					end = end + 1
-					found = true
-					break
-				}
-				end++
-			}
+		// 1. Scan with small mask
+		newPos, h := FindCutpoint(s.buf, startScan, avgScan, s.maskS)
+		if newPos < avgScan || (h&s.maskS) == 0 {
+			end = newPos
+			hash = h
+			found = true
 		}
 
+		// 2. Scan with large mask
 		if !found {
-			end = max
+			newPos, h := FindCutpoint(s.buf, avgScan, maxScan, s.maskL)
+			end = newPos
+			hash = h
 		}
 	}
 
@@ -184,43 +171,30 @@ func (c *FastCDC) Next() (*Chunk, error) {
 	if remaining <= c.config.MinSize {
 		end = len(c.data)
 	} else {
-		end = start + c.config.MinSize
-		max := start + c.config.MaxSize
-		if max > len(c.data) {
-			max = len(c.data)
-		}
-		avg := start + c.config.AvgSize
-
-		limitS := avg
-		if limitS > max {
-			limitS = max
-		}
-
 		found := false
-		for end < limitS {
-			hash = (hash << 1) + GearTable[c.data[end]]
-			if (hash & c.maskS) == 0 {
-				end = end + 1
-				found = true
-				break
-			}
-			end++
+		startScan := start + c.config.MinSize
+		maxScan := start + c.config.MaxSize
+		if maxScan > len(c.data) {
+			maxScan = len(c.data)
+		}
+		avgScan := start + c.config.AvgSize
+		if avgScan > maxScan {
+			avgScan = maxScan
 		}
 
-		if !found {
-			for end < max {
-				hash = (hash << 1) + GearTable[c.data[end]]
-				if (hash & c.maskL) == 0 {
-					end = end + 1
-					found = true
-					break
-				}
-				end++
-			}
+		// 1. Scan with small mask
+		newPos, h := FindCutpoint(c.data, startScan, avgScan, c.maskS)
+		if newPos < avgScan || (h&c.maskS) == 0 {
+			end = newPos
+			hash = h
+			found = true
 		}
 
+		// 2. Scan with large mask
 		if !found {
-			end = max
+			newPos, h := FindCutpoint(c.data, avgScan, maxScan, c.maskL)
+			end = newPos
+			hash = h
 		}
 	}
 
