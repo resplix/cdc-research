@@ -90,7 +90,7 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(5));
 
     let config = Config::default();
-    let size = 1024 * 1024;
+    let size = 1024 * 1024;// 1MB data
     group.throughput(Throughput::Bytes(size as u64));
 
     let zeros = vec![0u8; size];
