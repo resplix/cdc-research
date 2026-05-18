@@ -202,12 +202,23 @@ jobs:
           set -euo pipefail
           mkdir -p ../ci-results/asm
           cargo rustc --bench cdc_bench --profile bench -- --emit=asm
-          shopt -s nullglob
-          for f in target/bench/deps/*.s; do
+
+          # rustc emits `.s` files under profile-specific target dirs (varies by cargo/rust version).
+          # Collect anything under `target/**/deps/*.s`.
+          asm_count=0
+          while IFS= read -r f; do
             cp "$f" ../ci-results/asm/
-          done
-          echo "Assembly files copied to ci-results/asm:"
+            asm_count=$((asm_count + 1))
+          done < <(find target -type f -path '*/deps/*.s' -print | sort || true)
+
+          echo "Assembly files copied to ci-results/asm: ${asm_count}"
           ls -la ../ci-results/asm || true
+
+          # Don't fail the workflow if rustc doesn't emit asm for some reason,
+          # but make it obvious in logs/artifacts.
+          if [[ "${asm_count}" -eq 0 ]]; then
+            echo "(no assembly files found under target/**/deps/*.s)" | tee ../ci-results/asm/README.txt
+          fi
 
       # ── Criterion Benchmarks ──────────────────────────────────────────────────────
       # --color never: clean output for parsing
