@@ -1,5 +1,5 @@
 use crate::gear;
-use crate::config::{Config, ContentHashMode};
+use crate::config::{Config, ContentHashMode, PipelineMode};
 use std::io::Read;
 
 /// A chunk of data identified by CDC.
@@ -63,6 +63,14 @@ impl<R: Read> StreamingChunker<R> {
 
 impl<R: Read> Chunker for StreamingChunker<R> {
     fn next_chunk(&mut self) -> Option<Chunk> {
+        match self.config.pipeline_mode {
+            PipelineMode::TwoPass => self.next_chunk_two_pass(),
+        }
+    }
+}
+
+impl<R: Read> StreamingChunker<R> {
+    fn next_chunk_two_pass(&mut self) -> Option<Chunk> {
         if self.eof && self.pos >= self.len {
             return None;
         }
@@ -144,6 +152,14 @@ impl<'a> FastCDC<'a> {
 
 impl<'a> Chunker for FastCDC<'a> {
     fn next_chunk(&mut self) -> Option<Chunk> {
+        match self.config.pipeline_mode {
+            PipelineMode::TwoPass => self.next_chunk_two_pass(),
+        }
+    }
+}
+
+impl<'a> FastCDC<'a> {
+    fn next_chunk_two_pass(&mut self) -> Option<Chunk> {
         if self.pos >= self.data.len() {
             return None;
         }
