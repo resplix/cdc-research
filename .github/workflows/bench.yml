@@ -190,6 +190,25 @@ jobs:
         run: |
           cargo test -- --nocapture 2>&1 | tee ../ci-results/test.log
 
+      # â”€â”€ Assembly Output (for deep perf debugging) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # Emits rustc assembly for the bench crate so we can inspect codegen differences across runners.
+      # We copy only the generated `.s` files into `ci-results/asm/` for artifact upload.
+      - name: Emit assembly (cdc_bench)
+        shell: bash
+        working-directory: rust
+        env:
+          RUSTFLAGS: "-C target-cpu=native"
+        run: |
+          set -euo pipefail
+          mkdir -p ../ci-results/asm
+          cargo rustc --bench cdc_bench --profile bench -- --emit=asm
+          shopt -s nullglob
+          for f in target/bench/deps/*.s; do
+            cp "$f" ../ci-results/asm/
+          done
+          echo "Assembly files copied to ci-results/asm:"
+          ls -la ../ci-results/asm || true
+
       # ── Criterion Benchmarks ──────────────────────────────────────────────────────
       # --color never: clean output for parsing
       # --output-format bencher: machine-readable lines (easier to grep than default)
@@ -249,6 +268,12 @@ jobs:
             echo
             echo '```text'
             grep -E '^(test |running |test result)' ci-results/test.log || echo "(unavailable)"
+            echo '```'
+            echo
+            echo "### Assembly (cdc_bench)"
+            echo
+            echo '```text'
+            ls -la ci-results/asm 2>/dev/null || echo "(no assembly files)"
             echo '```'
             echo
             echo "### Benchmark Results (Throughput)"
