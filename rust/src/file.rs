@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use crate::chunk::{Chunk, Chunker, FastCDC};
 use crate::config::Config;
+use memmap2::Mmap;
 
 /// Read a file into a byte vector.
 pub fn read_file(path: &str) -> io::Result<Vec<u8>> {
@@ -9,6 +10,42 @@ pub fn read_file(path: &str) -> io::Result<Vec<u8>> {
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     Ok(buffer)
+}
+
+/// Memory-map a file for zero-copy access.
+///
+/// This avoids a userspace read buffer and gives the kernel readahead a clean,
+/// sequential access pattern.
+pub fn mmap_file(path: &str) -> io::Result<Mmap> {
+    let file = File::open(path)?;
+    // Safety: the file handle outlives the mapping and we treat the mapping as read-only.
+    unsafe { Mmap::map(&file) }
+}
+
+/// Chunk a file by first reading it into a `Vec<u8>`.
+///
+/// Returns the number of chunks produced.
+pub fn chunk_file_read_to_vec(path: &str, config: Config) -> io::Result<u64> {
+    let data = read_file(path)?;
+    Ok(chunk_bytes(&data, config))
+}
+
+/// Chunk a file using a zero-copy memory map.
+///
+/// Returns the number of chunks produced.
+pub fn chunk_file_mmap(path: &str, config: Config) -> io::Result<u64> {
+    let mmap = mmap_file(path)?;
+    Ok(chunk_bytes(&mmap, config))
+}
+
+fn chunk_bytes(data: &[u8], config: Config) -> u64 {
+    let mut cdc = FastCDC::new(data, config);
+    let mut count = 0u64;
+    while let Some(chunk) = cdc.next_chunk() {
+        std::hint::black_box(chunk);
+        count += 1;
+    }
+    count
 }
 
 /// Compare two datasets and return the deduplication ratio.
