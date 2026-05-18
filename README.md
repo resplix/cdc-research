@@ -33,7 +33,7 @@ Unlike traditional Rabin Fingerprinting, FastCDC utilizes the **Gear Hash** algo
 
 ## /// Cross-Platform CI Benchmarks
 
-We continuously verify our FastCDC SIMD implementations on GitHub Actions runners. Below are the median throughputs for raw Gear Hashing and the full FastCDC chunking pipeline (1MB chunks) across different architectures:
+We continuously verify our FastCDC SIMD implementations on GitHub Actions runners. Below are the median throughputs for raw Gear Hashing and the full FastCDC chunking pipeline (CDC cut-point search + per-chunk BLAKE3, default ~16KB avg chunks) across different architectures:
 
 | Architecture | CPU / Instance | SIMD Target | Raw Hash (GiB/s) | Pipeline (MiB/s) |
 | :--- | :--- | :--- | :--- | :--- |
