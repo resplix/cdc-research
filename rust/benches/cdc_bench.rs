@@ -146,6 +146,75 @@ fn bench_file_pipeline(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_streaming_pipeline(c: &mut Criterion) {
+    const SIZE: usize = 32 * 1024 * 1024; // 32MiB
+
+    let data = make_random_data(SIZE, 0xA11CE);
+
+    let mut group = c.benchmark_group("Streaming_Pipeline");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+    group.throughput(Throughput::Bytes(SIZE as u64));
+
+    let config_blake3 = Config::default();
+    let config_cdc_only = Config {
+        content_hash_mode: ContentHashMode::None,
+        ..Config::default()
+    };
+
+    group.bench_function("FastCDC_CDCOnly", |b| {
+        b.iter(|| {
+            let mut cdc = FastCDC::new(black_box(&data), config_cdc_only);
+            let mut count = 0u64;
+            while let Some(chunk) = cdc.next_chunk() {
+                black_box(&chunk);
+                count += 1;
+            }
+            black_box(count)
+        })
+    });
+
+    group.bench_function("StreamingChunker_CDCOnly", |b| {
+        b.iter(|| {
+            let cursor = std::io::Cursor::new(black_box(&data));
+            let mut cdc = resplix_cdc::StreamingChunker::new(cursor, config_cdc_only);
+            let mut count = 0u64;
+            while let Some(chunk) = cdc.next_chunk() {
+                black_box(&chunk);
+                count += 1;
+            }
+            black_box(count)
+        })
+    });
+
+    group.bench_function("FastCDC_Blake3", |b| {
+        b.iter(|| {
+            let mut cdc = FastCDC::new(black_box(&data), config_blake3);
+            let mut count = 0u64;
+            while let Some(chunk) = cdc.next_chunk() {
+                black_box(&chunk);
+                count += 1;
+            }
+            black_box(count)
+        })
+    });
+
+    group.bench_function("StreamingChunker_Blake3", |b| {
+        b.iter(|| {
+            let cursor = std::io::Cursor::new(black_box(&data));
+            let mut cdc = resplix_cdc::StreamingChunker::new(cursor, config_blake3);
+            let mut count = 0u64;
+            while let Some(chunk) = cdc.next_chunk() {
+                black_box(&chunk);
+                count += 1;
+            }
+            black_box(count)
+        })
+    });
+
+    group.finish();
+}
+
 fn bench_cdc_pipeline(c: &mut Criterion) {
     let mut group = c.benchmark_group("CDC_Pipeline");
     group.warm_up_time(Duration::from_secs(2));
@@ -244,6 +313,7 @@ criterion_group!(
     benches,
     bench_gear_cutpoint,
     bench_file_pipeline,
+    bench_streaming_pipeline,
     bench_cdc_pipeline,
     bench_zeros_vs_random
 );
