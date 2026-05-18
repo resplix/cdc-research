@@ -9,6 +9,7 @@ description = "FastCDC (2016) implementation for industrial data transit."
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 blake3 = "1.5"
+memmap2 = "0.9"
 # Future dependencies for SIMD and hashing
 # wide = "0.7" 
 
