@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use resplix_cdc::{Config, FastCDC, Chunker, gear};
+use resplix_cdc::{Config, ContentHashMode, FastCDC, Chunker, gear};
 use std::time::Duration;
 
 /// Generate deterministic "random" data using LCG
@@ -60,7 +60,11 @@ fn bench_cdc_pipeline(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(2));
     group.measurement_time(Duration::from_secs(5));
 
-    let config = Config::default();
+    let config_blake3 = Config::default();
+    let config_cdc_only = Config {
+        content_hash_mode: ContentHashMode::None,
+        ..Config::default()
+    };
 
     // Test multiple sizes to reveal cache effects (64KB → L1, 256KB → L2, 1MB+ → L3/RAM)
     for &size in &[64 * 1024, 256 * 1024, 1024 * 1024, 4 * 1024 * 1024] {
@@ -68,9 +72,21 @@ fn bench_cdc_pipeline(c: &mut Criterion) {
         let label = format!("{}KB", size / 1024);
         group.throughput(Throughput::Bytes(size as u64));
 
-        group.bench_with_input(BenchmarkId::new("FastCDC", &label), &data, |b, d| {
+        group.bench_with_input(BenchmarkId::new("FastCDC_CDCOnly", &label), &data, |b, d| {
             b.iter(|| {
-                let mut cdc = FastCDC::new(black_box(d), config);
+                let mut cdc = FastCDC::new(black_box(d), config_cdc_only);
+                let mut count = 0u64;
+                while let Some(chunk) = cdc.next_chunk() {
+                    black_box(&chunk);
+                    count += 1;
+                }
+                count
+            })
+        });
+
+        group.bench_with_input(BenchmarkId::new("FastCDC_Blake3", &label), &data, |b, d| {
+            b.iter(|| {
+                let mut cdc = FastCDC::new(black_box(d), config_blake3);
                 let mut count = 0u64;
                 while let Some(chunk) = cdc.next_chunk() {
                     black_box(&chunk);
@@ -89,7 +105,11 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
     group.warm_up_time(Duration::from_secs(2));
     group.measurement_time(Duration::from_secs(5));
 
-    let config = Config::default();
+    let config_blake3 = Config::default();
+    let config_cdc_only = Config {
+        content_hash_mode: ContentHashMode::None,
+        ..Config::default()
+    };
     let size = 1024 * 1024;// 1MB data
     group.throughput(Throughput::Bytes(size as u64));
 
@@ -97,17 +117,31 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
     let random = make_random_data(size, 0x12345678);
 
     // Zeros: all gear lookups hit the same cache line — best-case cache scenario
-    group.bench_function("Zeros_1MB", |b| {
+    group.bench_function("Zeros_1MB_CDCOnly", |b| {
         b.iter(|| {
-            let mut cdc = FastCDC::new(black_box(&zeros), config);
+            let mut cdc = FastCDC::new(black_box(&zeros), config_cdc_only);
             while let Some(c) = cdc.next_chunk() { black_box(&c); }
         })
     });
 
     // Random: uniform distribution across all 256 entries — realistic workload
-    group.bench_function("Random_1MB", |b| {
+    group.bench_function("Random_1MB_CDCOnly", |b| {
         b.iter(|| {
-            let mut cdc = FastCDC::new(black_box(&random), config);
+            let mut cdc = FastCDC::new(black_box(&random), config_cdc_only);
+            while let Some(c) = cdc.next_chunk() { black_box(&c); }
+        })
+    });
+
+    group.bench_function("Zeros_1MB_Blake3", |b| {
+        b.iter(|| {
+            let mut cdc = FastCDC::new(black_box(&zeros), config_blake3);
+            while let Some(c) = cdc.next_chunk() { black_box(&c); }
+        })
+    });
+
+    group.bench_function("Random_1MB_Blake3", |b| {
+        b.iter(|| {
+            let mut cdc = FastCDC::new(black_box(&random), config_blake3);
             while let Some(c) = cdc.next_chunk() { black_box(&c); }
         })
     });
