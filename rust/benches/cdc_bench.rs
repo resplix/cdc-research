@@ -1,5 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use resplix_cdc::{Config, ContentHashMode, FastCDC, Chunker, gear};
+use resplix_cdc::{
+    chunk_file_mmap, chunk_file_read_to_vec, Config, ContentHashMode, FastCDC, Chunker, gear,
+};
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// Generate deterministic "random" data using LCG
@@ -11,6 +17,39 @@ fn make_random_data(size: usize, seed: u64) -> Vec<u8> {
         *byte = (rng >> 33) as u8;
     }
     data
+}
+
+fn ensure_bench_file(path: &Path, size: usize) -> io::Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut file = File::create(path)?;
+    let mut rng = 0xC0FFEE_u64;
+
+    // Write in 1MiB blocks to avoid allocating the full file in memory.
+    let mut remaining = size;
+    let mut block = vec![0u8; 1024 * 1024];
+    while remaining > 0 {
+        for b in block.iter_mut() {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            *b = (rng >> 33) as u8;
+        }
+        let to_write = remaining.min(block.len());
+        file.write_all(&block[..to_write])?;
+        remaining -= to_write;
+    }
+
+    Ok(())
+}
+
+fn bench_file_path() -> &'static PathBuf {
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| std::env::temp_dir().join("resplix-cdc").join("criterion-bench.bin"))
 }
 
 fn bench_gear_cutpoint(c: &mut Criterion) {
@@ -50,6 +89,58 @@ fn bench_gear_cutpoint(c: &mut Criterion) {
     // Dispatch always runs — shows overhead of runtime feature detection
     group.bench_function("Dispatch", |b| {
         b.iter(|| gear::find_cutpoint(black_box(&data), 0, data.len(), mask))
+    });
+
+    group.finish();
+}
+
+fn bench_file_pipeline(c: &mut Criterion) {
+    const FILE_SIZE: usize = 32 * 1024 * 1024; // 32MiB (CI-friendly, still non-trivial)
+
+    let path = bench_file_path().clone();
+    ensure_bench_file(&path, FILE_SIZE).expect("failed to create benchmark file");
+
+    let mut group = c.benchmark_group("File_Pipeline");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+    group.throughput(Throughput::Bytes(FILE_SIZE as u64));
+
+    let config_blake3 = Config::default();
+    let config_cdc_only = Config {
+        content_hash_mode: ContentHashMode::None,
+        ..Config::default()
+    };
+
+    group.bench_function("ReadToVec_CDCOnly", |b| {
+        b.iter(|| {
+            let count = chunk_file_read_to_vec(path.to_string_lossy().as_ref(), config_cdc_only)
+                .expect("read_to_vec failed");
+            black_box(count)
+        })
+    });
+
+    group.bench_function("Mmap_CDCOnly", |b| {
+        b.iter(|| {
+            let count =
+                chunk_file_mmap(path.to_string_lossy().as_ref(), config_cdc_only).expect("mmap failed");
+            black_box(count)
+        })
+    });
+
+    group.bench_function("ReadToVec_Blake3", |b| {
+        b.iter(|| {
+            let count = chunk_file_read_to_vec(path.to_string_lossy().as_ref(), config_blake3)
+                .expect("read_to_vec failed");
+            black_box(count)
+        })
+    });
+
+    group.bench_function("Mmap_Blake3", |b| {
+        b.iter(|| {
+            let count =
+                chunk_file_mmap(path.to_string_lossy().as_ref(), config_blake3).expect("mmap failed");
+            black_box(count)
+        })
     });
 
     group.finish();
@@ -149,5 +240,11 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_gear_cutpoint, bench_cdc_pipeline, bench_zeros_vs_random);
+criterion_group!(
+    benches,
+    bench_gear_cutpoint,
+    bench_file_pipeline,
+    bench_cdc_pipeline,
+    bench_zeros_vs_random
+);
 criterion_main!(benches);
