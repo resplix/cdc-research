@@ -52,6 +52,46 @@ fn bench_file_path() -> &'static PathBuf {
     PATH.get_or_init(|| std::env::temp_dir().join("resplix-cdc").join("criterion-bench.bin"))
 }
 
+fn bench_blake3_raw(c: &mut Criterion) {
+    // Measure BLAKE3 in isolation on (a) one large contiguous buffer and (b) many small buffers.
+    let mut group = c.benchmark_group("Blake3_Raw");
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(5));
+
+    // Large contiguous buffer: where BLAKE3 typically hits its per-core ceiling.
+    let big_size = 256 * 1024 * 1024; // 256MiB (CI-friendly, big enough to amortize overhead)
+    let big = make_random_data(big_size, 0xB1A3E);
+    group.throughput(Throughput::Bytes(big.len() as u64));
+    group.bench_function("Contiguous_256MiB", |b| {
+        b.iter(|| {
+            let h = blake3::hash(black_box(&big));
+            black_box(h)
+        })
+    });
+
+    // Many small inputs: approximates "hash each CDC chunk" overhead (init/finalize dominates).
+    let chunk_size = 16 * 1024; // matches current default avg chunk size neighborhood
+    let total = 256 * 1024 * 1024; // same total bytes as big
+    let small = make_random_data(total, 0xC0DE);
+    let mut slices = Vec::with_capacity(total / chunk_size);
+    for s in small.chunks_exact(chunk_size) {
+        slices.push(s);
+    }
+
+    group.throughput(Throughput::Bytes(total as u64));
+    group.bench_function("Many_16KiB", |b| {
+        b.iter(|| {
+            let mut last = [0u8; 32];
+            for s in &slices {
+                last = blake3::hash(black_box(s)).into();
+            }
+            black_box(last)
+        })
+    });
+
+    group.finish();
+}
+
 fn bench_gear_cutpoint(c: &mut Criterion) {
     let mut group = c.benchmark_group("GearHash_Cutpoint");
     group.warm_up_time(Duration::from_secs(3));
@@ -311,6 +351,7 @@ fn bench_zeros_vs_random(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_blake3_raw,
     bench_gear_cutpoint,
     bench_file_pipeline,
     bench_streaming_pipeline,
