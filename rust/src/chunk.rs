@@ -45,7 +45,8 @@ impl<R: Read> StreamingChunker<R> {
     }
 
     fn fill_buffer(&mut self) -> std::io::Result<()> {
-        if self.pos > 0 {
+        // Avoid a memmove on every fill. Only compact when we have no space left at the tail.
+        if self.len == self.buffer.len() && self.pos > 0 {
             self.buffer.copy_within(self.pos..self.len, 0);
             self.len -= self.pos;
             self.pos = 0;
