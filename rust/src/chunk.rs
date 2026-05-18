@@ -1,5 +1,5 @@
 use crate::gear;
-use crate::config::Config;
+use crate::config::{Config, ContentHashMode};
 use std::io::Read;
 
 /// A chunk of data identified by CDC.
@@ -102,7 +102,10 @@ impl<R: Read> Chunker for StreamingChunker<R> {
 
         let length = end - start;
         let chunk_data = &self.buffer[start..end];
-        let content_hash = blake3::hash(chunk_data).into();
+        let content_hash: [u8; 32] = match self.config.content_hash_mode {
+            ContentHashMode::Blake3 => blake3::hash(chunk_data).into(),
+            ContentHashMode::None => [0u8; 32],
+        };
 
         self.pos = end;
         Some(Chunk {
@@ -172,7 +175,10 @@ impl<'a> Chunker for FastCDC<'a> {
 
         let length = end - start;
         let chunk_data = &self.data[start..end];
-        let content_hash = blake3::hash(chunk_data).into();
+        let content_hash: [u8; 32] = match self.config.content_hash_mode {
+            ContentHashMode::Blake3 => blake3::hash(chunk_data).into(),
+            ContentHashMode::None => [0u8; 32],
+        };
 
         self.pos = end;
         Some(Chunk {
