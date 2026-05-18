@@ -214,7 +214,7 @@ jobs:
             echo "=== SIMD THROUGHPUT SUMMARY (median) ==="
             # Criterion outputs benchmark name on one line, then time/thrpt on the next.
             # We grab the thrpt lines which immediately follow a benchmark name line.
-            grep -E '(GearHash_Cutpoint|File_Pipeline|Streaming_Pipeline|CDC_Pipeline|Data_Entropy|thrpt)' \
+            grep -E '(Blake3_Raw|GearHash_Cutpoint|File_Pipeline|Streaming_Pipeline|CDC_Pipeline|Data_Entropy|thrpt)' \
               ci-results/benchmark.log || echo "(no throughput data found)"
           } > ci-results/results-summary.txt
 
